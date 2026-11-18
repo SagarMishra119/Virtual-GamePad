@@ -171,7 +171,7 @@ fun HomeScreen(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "1.1",
+                            text = "1.2.0",
                             color = NeonCyan,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold

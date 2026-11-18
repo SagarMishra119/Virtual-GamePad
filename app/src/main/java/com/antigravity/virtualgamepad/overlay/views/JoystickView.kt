@@ -101,6 +101,7 @@ class JoystickView(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        parent?.requestDisallowInterceptTouchEvent(true)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 returnAnimator?.cancel()
@@ -111,12 +112,25 @@ class JoystickView(
                 updateKnobPosition(event.x, event.y)
                 return true
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+            MotionEvent.ACTION_UP -> {
                 handleRelease()
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                // On some Samsung / One UI 6 builds, simultaneous synthetic gesture injection
+                // can trigger a transient ACTION_CANCEL. Do not snap back to center immediately;
+                // the stick only releases on a true ACTION_UP or loss of window focus.
                 return true
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus) {
+            handleRelease()
+        }
     }
 
     private fun updateKnobPosition(touchX: Float, touchY: Float) {

@@ -185,7 +185,7 @@ fun SettingsScreen() {
                     Icon(Icons.Default.Info, contentDescription = null, tint = NeonCyan)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Virtual Gamepad v1.1",
+                        text = "Virtual Gamepad v1.2.0",
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp

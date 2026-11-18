@@ -19,6 +19,7 @@ class DraggableOverlayContainer(context: Context) : FrameLayout(context) {
         // preventing the underlying game from seeing touches under the joystick!
         isClickable = true
         isFocusable = false
+        isMotionEventSplittingEnabled = true
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
@@ -26,7 +27,7 @@ class DraggableOverlayContainer(context: Context) : FrameLayout(context) {
         return if (isEditMode) {
             true
         } else {
-            super.onInterceptTouchEvent(ev)
+            false
         }
     }
 
