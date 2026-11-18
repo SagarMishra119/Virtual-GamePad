@@ -1,0 +1,17 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#2563EB"
+        android:pathData="M0,0h108v108h-108z" />
+    <!-- Phone outline -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,24 C38.7,24 36,26.7 36,30 L36,78 C36,81.3 38.7,84 42,84 L66,84 C69.3,84 72,81.3 72,78 L72,30 C72,26.7 69.3,24 66,24 L42,24 Z M42,30 L66,30 L66,74 L42,74 L42,30 Z M54,77 C55.1,77 56,77.9 56,79 C56,80.1 55.1,81 54,81 C52.9,81 52,80.1 52,79 C52,77.9 52.9,77 54,77 Z" />
+    <!-- Sound waves -->
+    <path
+        android:fillColor="#60A5FA"
+        android:pathData="M78,44 C80.5,47.2 82,51.2 82,55.5 C82,59.8 80.5,63.8 78,67 L81.5,70 C84.8,65.8 87,60.8 87,55.5 C87,50.2 84.8,45.2 81.5,41 L78,44 Z M26.5,41 C23.2,45.2 21,50.2 21,55.5 C21,60.8 23.2,65.8 26.5,70 L30,67 C27.5,63.8 26,59.8 26,55.5 C26,51.2 27.5,47.2 30,44 L26.5,41 Z" />
+</vector>

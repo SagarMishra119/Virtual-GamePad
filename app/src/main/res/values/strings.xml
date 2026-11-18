@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Virtual Gamepad</string>
+    <string name="overlay_service_name">Virtual Gamepad Overlay Service</string>
+    <string name="overlay_notification_title">Virtual Gamepad is Running</string>
+    <string name="overlay_notification_text">Tap to open controls and settings</string>
+    <string name="accessibility_service_description">Allows Virtual Gamepad to detect when your target games launch and simulate touch movement gestures if gamepad mode is disabled.</string>
+</resources>
