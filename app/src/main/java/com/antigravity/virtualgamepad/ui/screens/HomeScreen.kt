@@ -64,6 +64,7 @@ fun HomeScreen(
     var hasA11yPerm by remember {
         mutableStateOf(GamepadAccessibilityService.isRunning())
     }
+    var showA11yDisclosureDialog by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -77,6 +78,67 @@ fun HomeScreen(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
+    }
+
+    if (showA11yDisclosureDialog) {
+        AlertDialog(
+            onDismissRequest = { showA11yDisclosureDialog = false },
+            title = {
+                Text(
+                    text = "Accessibility Service Notice",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = NeonCyan
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Virtual Gamepad uses the AccessibilityService API for the following functionality:",
+                        fontSize = 13.sp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "• Synthetic Touch Input: Dispatches simulated touch and drag gestures onto your game canvas when you move the on-screen virtual joystick.",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "• No Data Collection: We do NOT read screen content, inspect passwords, capture keystrokes, record personal information, or monitor other apps.",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "• Full User Control: The service operates exclusively during gameplay when the overlay is active and can be turned off at any time.",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showA11yDisclosureDialog = false
+                        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
+                ) {
+                    Text("Agree & Continue", color = CarbonBlack, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showA11yDisclosureDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = SurfaceDark,
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 
     Column(
@@ -164,9 +226,13 @@ fun HomeScreen(
                     description = "Required to synthesize movement touches in the game without PC/Shizuku",
                     isGranted = hasA11yPerm,
                     onGrantClick = {
-                        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(intent)
+                        if (hasA11yPerm) {
+                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        } else {
+                            showA11yDisclosureDialog = true
+                        }
                     }
                 )
 
