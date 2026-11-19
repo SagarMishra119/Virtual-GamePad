@@ -1,8 +1,10 @@
 package com.antigravity.virtualgamepad.overlay
 
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Point
 import android.graphics.PointF
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -91,25 +93,44 @@ class OverlayLayoutManager(
         }
     }
 
+    private fun getScreenBounds(): Point {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = windowManager.currentWindowMetrics.bounds
+            Point(bounds.width(), bounds.height())
+        } else {
+            val dm = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(dm)
+            Point(dm.widthPixels, dm.heightPixels)
+        }
+    }
+
     /**
      * Calculates the touch anchor point on the game screen.
-     * Positioned outside the joystick window boundary so synthetic touches hit KOTOR directly
-     * and never re-enter our overlay window even when moving left!
+     * Positioned safely outside the joystick window boundary so synthetic touches hit KOTOR directly
+     * and strictly clamped within physical screen bounds so gestures are never rejected.
      */
     fun getTouchAnchorScreen(): PointF {
         val holder = elementHolders["joystick_movement"]
-        val dm = context.resources.displayMetrics
-        val density = dm.density
+        val bounds = getScreenBounds()
+        val screenW = bounds.x
+        val screenH = bounds.y
+        val density = context.resources.displayMetrics.density
         val dragDist = (150f * density).coerceIn(420f, 600f)
 
         return if (holder != null) {
             val params = holder.params
             val offsetRight = (dragDist + dpToPx(30)).toInt()
-            val anchorX = (params.x + params.width + offsetRight).toFloat().coerceAtMost(dm.widthPixels * 0.48f)
-            val anchorY = (params.y + params.height / 2f).toFloat().coerceIn(100f, dm.heightPixels - 100f)
+            val minAnchorX = (params.x + params.width + 40).toFloat()
+            val maxAnchorX = (screenW * 0.48f).coerceAtLeast(minAnchorX)
+            val anchorX = (params.x + params.width + offsetRight).toFloat().coerceIn(minAnchorX, maxAnchorX)
+            val anchorY = (params.y + params.height / 2f).toFloat().coerceIn(
+                dragDist + 40f,
+                (screenH - dragDist - 40f).coerceAtLeast(100f)
+            )
             PointF(anchorX, anchorY)
         } else {
-            PointF(dm.widthPixels * 0.35f, dm.heightPixels * 0.70f)
+            PointF(screenW * 0.35f, screenH * 0.65f)
         }
     }
 
@@ -120,9 +141,11 @@ class OverlayLayoutManager(
     ) {
         if (elementHolders.containsKey(config.id)) return
 
+        val shouldShow = isTargetAppActive && !isManuallyHidden && config.isEnabled
+        val bounds = getScreenBounds()
         val sizePx = dpToPx(config.sizeDp)
-        val xPx = dpToPx(config.xDp).coerceIn(0, (metrics.widthPixels - sizePx).coerceAtLeast(0))
-        val yPx = dpToPx(config.yDp).coerceIn(0, (metrics.heightPixels - sizePx).coerceAtLeast(0))
+        val xPx = dpToPx(config.xDp).coerceIn(0, (bounds.x - sizePx).coerceAtLeast(0))
+        val yPx = dpToPx(config.yDp).coerceIn(0, (bounds.y - sizePx).coerceAtLeast(0))
 
         val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -131,24 +154,31 @@ class OverlayLayoutManager(
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
-        // FLAG_LAYOUT_NO_LIMITS removed to ensure WindowManager strictly enforces
-        // the touchable boundary of this window, isolating touches from the game underneath!
+        val initialFlags = if (shouldShow) {
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
+        } else {
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        }
+
         val params = WindowManager.LayoutParams(
             sizePx,
             sizePx,
             layoutFlag,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_SPLIT_TOUCH,
+            initialFlags,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = xPx
-            y = yPx
+            x = if (shouldShow) xPx else -10000
+            y = if (shouldShow) yPx else -10000
+            alpha = if (shouldShow) config.opacity else 0f
         }
 
         val container = DraggableOverlayContainer(context).apply {
-            isEditMode = this@OverlayLayoutManager.isEditMode
+            this.isEditMode = this@OverlayLayoutManager.isEditMode
+            visibility = if (shouldShow) View.VISIBLE else View.GONE
         }
 
         val content: View = when (config.type) {
@@ -205,9 +235,9 @@ class OverlayLayoutManager(
         }
 
         container.onDragMove = { dx, dy ->
-            val dm = context.resources.displayMetrics
-            params.x = (startX + dx).coerceIn(0, dm.widthPixels - params.width)
-            params.y = (startY + dy).coerceIn(0, dm.heightPixels - params.height)
+            val bounds = getScreenBounds()
+            params.x = (startX + dx).coerceIn(0, bounds.x - params.width)
+            params.y = (startY + dy).coerceIn(0, bounds.y - params.height)
             try {
                 windowManager.updateViewLayout(container, params)
             } catch (e: Exception) {
@@ -225,6 +255,7 @@ class OverlayLayoutManager(
     private fun buildAndAddToolbar() {
         if (isToolbarAdded) return
 
+        val shouldShow = isTargetAppActive
         val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
@@ -232,18 +263,26 @@ class OverlayLayoutManager(
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+        val initialFlags = if (shouldShow) {
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
+        } else {
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        }
+
         toolbarParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutFlag,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_SPLIT_TOUCH,
+            initialFlags,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            x = savedToolbarX
-            y = savedToolbarY
+            x = if (shouldShow) savedToolbarX else -10000
+            y = if (shouldShow) savedToolbarY else -10000
+            alpha = if (shouldShow) 1f else 0f
         }
 
         toolbarView = FloatingToolbarView(
@@ -356,14 +395,16 @@ class OverlayLayoutManager(
             val params = holder.params
 
             if (shouldShowElements && config.isEnabled) {
+                val bounds = getScreenBounds()
                 val sizePx = dpToPx(config.sizeDp)
                 params.width = sizePx
                 params.height = sizePx
-                params.x = dpToPx(config.xDp)
-                params.y = dpToPx(config.yDp)
+                params.x = dpToPx(config.xDp).coerceIn(0, (bounds.x - sizePx).coerceAtLeast(0))
+                params.y = dpToPx(config.yDp).coerceIn(0, (bounds.y - sizePx).coerceAtLeast(0))
                 params.alpha = config.opacity
                 params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                        WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
                 container.visibility = View.VISIBLE
             } else {
                 params.x = -10000
@@ -392,7 +433,8 @@ class OverlayLayoutManager(
                 toolbarParams!!.y = savedToolbarY
                 toolbarParams!!.alpha = 1f
                 toolbarParams!!.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                        WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
                 toolbarView!!.visibility = View.VISIBLE
             } else {
                 toolbarParams!!.x = -10000
@@ -419,14 +461,16 @@ class OverlayLayoutManager(
                 val container = holder.container
 
                 if (shouldShow && config.isEnabled) {
+                    val bounds = getScreenBounds()
                     val newSizePx = dpToPx(config.sizeDp)
                     params.width = newSizePx
                     params.height = newSizePx
-                    params.x = dpToPx(config.xDp)
-                    params.y = dpToPx(config.yDp)
+                    params.x = dpToPx(config.xDp).coerceIn(0, (bounds.x - newSizePx).coerceAtLeast(0))
+                    params.y = dpToPx(config.yDp).coerceIn(0, (bounds.y - newSizePx).coerceAtLeast(0))
                     params.alpha = config.opacity
                     params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                            WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
                     container.visibility = View.VISIBLE
                 } else {
                     params.x = -10000
@@ -457,15 +501,55 @@ class OverlayLayoutManager(
     }
 
     /**
-     * Completely removes all views from WindowManager upon termination.
+     * Responds to device orientation and configuration changes,
+     * ensuring elements stay within active screen boundaries in landscape/portrait.
+     */
+    fun onConfigurationChanged(newConfig: Configuration) {
+        val bounds = getScreenBounds()
+        for ((_, holder) in elementHolders) {
+            val params = holder.params
+            val container = holder.container
+            if (holder.isAddedToWm && container.visibility == View.VISIBLE) {
+                val sizePx = params.width
+                params.x = params.x.coerceIn(0, (bounds.x - sizePx).coerceAtLeast(0))
+                params.y = params.y.coerceIn(0, (bounds.y - sizePx).coerceAtLeast(0))
+                try {
+                    windowManager.updateViewLayout(container, params)
+                } catch (e: Exception) {
+                    // ignore
+                }
+            }
+        }
+        if (toolbarView != null && toolbarParams != null && isToolbarAdded && toolbarView!!.visibility == View.VISIBLE) {
+            savedToolbarX = 0
+            savedToolbarY = dpToPx(16)
+            toolbarParams!!.x = savedToolbarX
+            toolbarParams!!.y = savedToolbarY
+            try {
+                windowManager.updateViewLayout(toolbarView, toolbarParams)
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
+    /**
+     * Completely removes all views from WindowManager immediately upon termination.
      */
     fun removeAll() {
         for ((_, holder) in elementHolders) {
             if (holder.isAddedToWm) {
+                if (holder.content is JoystickView) {
+                    holder.content.cancelAnimations()
+                }
                 try {
-                    windowManager.removeView(holder.container)
+                    windowManager.removeViewImmediate(holder.container)
                 } catch (e: Exception) {
-                    // ignore
+                    try {
+                        windowManager.removeView(holder.container)
+                    } catch (e2: Exception) {
+                        // ignore
+                    }
                 }
                 holder.isAddedToWm = false
             }
@@ -474,9 +558,13 @@ class OverlayLayoutManager(
 
         if (isToolbarAdded && toolbarView != null) {
             try {
-                windowManager.removeView(toolbarView)
+                windowManager.removeViewImmediate(toolbarView)
             } catch (e: Exception) {
-                // ignore
+                try {
+                    windowManager.removeView(toolbarView)
+                } catch (e2: Exception) {
+                    // ignore
+                }
             }
             isToolbarAdded = false
         }

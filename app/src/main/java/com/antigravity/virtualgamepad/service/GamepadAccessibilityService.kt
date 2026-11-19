@@ -32,7 +32,9 @@ class GamepadAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) {
             val pkg = event.packageName?.toString() ?: return
 
             val prefsRepo = PreferencesRepository.getInstance(this)
@@ -41,20 +43,20 @@ class GamepadAccessibilityService : AccessibilityService() {
                 return
             }
 
-            // Ignore our app, Android system UI, volume, transient overlays, keyboards, permission popups
-            if (pkg == packageName ||
-                pkg == "com.android.systemui" ||
+            // Ignore Android system UI, volume, transient overlays, keyboards, permission popups
+            if (pkg == "com.android.systemui" ||
                 pkg == "android" ||
                 pkg.contains("inputmethod", ignoreCase = true) ||
                 pkg.contains("permissioncontroller", ignoreCase = true) ||
                 pkg.contains("gametools", ignoreCase = true) ||
+                pkg.contains("gamebooster", ignoreCase = true) ||
                 pkg.contains("gamepad", ignoreCase = true)
             ) {
                 return
             }
 
-            if (isLauncherPackage(pkg)) {
-                Log.i(tag, "Launcher/Home active: $pkg -> Hide overlay")
+            if (isLauncherPackage(pkg) || pkg == packageName) {
+                Log.i(tag, "Launcher/Home/App active: $pkg -> Hide overlay")
                 OverlayService.hide()
                 return
             }
@@ -63,9 +65,10 @@ class GamepadAccessibilityService : AccessibilityService() {
             if (isTarget) {
                 Log.i(tag, "Selected target game active: $pkg -> Show overlay")
                 OverlayService.show(this)
+            } else {
+                Log.i(tag, "Non-target app active: $pkg -> Hide overlay")
+                OverlayService.hide()
             }
-            // Note: We intentionally do NOT hide on unclassified popups/dialogs so the overlay
-            // does not randomly disappear during in-game cutscenes, audio logs, or dialogs!
         }
     }
 
@@ -73,11 +76,13 @@ class GamepadAccessibilityService : AccessibilityService() {
         return pkg == "com.android.launcher" ||
                 pkg.contains("launcher", ignoreCase = true) ||
                 pkg.contains("home", ignoreCase = true) ||
+                pkg.contains("quickstep", ignoreCase = true) ||
                 pkg == "com.google.android.apps.nexuslauncher" ||
                 pkg == "com.sec.android.app.launcher" ||
                 pkg == "com.miui.home" ||
                 pkg == "com.oppo.launcher" ||
-                pkg == "com.huawei.android.launcher"
+                pkg == "com.huawei.android.launcher" ||
+                pkg == "com.oneplus.launcher"
     }
 
     override fun onInterrupt() {
@@ -108,10 +113,11 @@ class GamepadAccessibilityService : AccessibilityService() {
         }
 
         // Distance in pixels to drag outwards from anchor (420px - 600px guarantees full running sprint in KOTOR)
-        val density = resources.displayMetrics.density
+        val dm = resources.displayMetrics
+        val density = dm.density
         val maxDragPx = (150f * density).coerceIn(420f, 600f)
-        val targetX = (anchorX + normX * maxDragPx * magnitude).coerceIn(10f, 4000f)
-        val targetY = (anchorY + normY * maxDragPx * magnitude).coerceIn(10f, 4000f)
+        val targetX = (anchorX + normX * maxDragPx * magnitude).coerceIn(20f, (dm.widthPixels - 20f).coerceAtLeast(100f))
+        val targetY = (anchorY + normY * maxDragPx * magnitude).coerceIn(20f, (dm.heightPixels - 20f).coerceAtLeast(100f))
 
         currentTargetX = targetX
         currentTargetY = targetY
@@ -151,8 +157,9 @@ class GamepadAccessibilityService : AccessibilityService() {
                     // Subtle 1.5px sub-pixel offset ensures Android's InputDispatcher NEVER drops
                     // the ACTION_MOVE events as duplicates, sending active 25 Hz move events to KOTOR!
                     val jitter = if (microStep) 1.5f else -1.5f
-                    val nextX = currentTargetX + jitter
-                    val nextY = currentTargetY + jitter
+                    val dm = resources.displayMetrics
+                    val nextX = (currentTargetX + jitter).coerceIn(20f, (dm.widthPixels - 20f).coerceAtLeast(100f))
+                    val nextY = (currentTargetY + jitter).coerceIn(20f, (dm.heightPixels - 20f).coerceAtLeast(100f))
 
                     val path = Path().apply {
                         moveTo(lastX, lastY)
@@ -211,9 +218,12 @@ class GamepadAccessibilityService : AccessibilityService() {
 
     private fun dispatchDirectDrag(startX: Float, startY: Float, endX: Float, endY: Float) {
         try {
+            val dm = resources.displayMetrics
+            val safeEndX = endX.coerceIn(20f, (dm.widthPixels - 20f).coerceAtLeast(100f))
+            val safeEndY = endY.coerceIn(20f, (dm.heightPixels - 20f).coerceAtLeast(100f))
             val path = Path().apply {
                 moveTo(startX, startY)
-                lineTo(endX, endY)
+                lineTo(safeEndX, safeEndY)
             }
             val stroke = GestureDescription.StrokeDescription(path, 0L, 120L)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()

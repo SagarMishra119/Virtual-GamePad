@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -47,6 +48,11 @@ class OverlayService : Service() {
         Log.i(tag, "OverlayService created and armed for target games")
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        overlayLayoutManager?.onConfigurationChanged(newConfig)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
@@ -54,6 +60,11 @@ class OverlayService : Service() {
                 overlayLayoutManager?.removeAll()
                 stopSelf()
                 return START_NOT_STICKY
+            }
+            ACTION_START -> {
+                PreferencesRepository.getInstance(this).setServiceArmed(true)
+                // Arm service in background; keep overlay hidden until target game is active
+                overlayLayoutManager?.setOverlayVisible(false)
             }
             ACTION_FORCE_SHOW -> {
                 PreferencesRepository.getInstance(this).setServiceArmed(true)
@@ -138,6 +149,7 @@ class OverlayService : Service() {
     companion object {
         private const val CHANNEL_ID = "virtual_gamepad_channel"
         private const val NOTIFICATION_ID = 2001
+        const val ACTION_START = "com.antigravity.virtualgamepad.ACTION_START"
         const val ACTION_STOP = "com.antigravity.virtualgamepad.ACTION_STOP"
         const val ACTION_FORCE_SHOW = "com.antigravity.virtualgamepad.ACTION_FORCE_SHOW"
         const val ACTION_FORCE_HIDE = "com.antigravity.virtualgamepad.ACTION_FORCE_HIDE"
@@ -154,7 +166,7 @@ class OverlayService : Service() {
         fun start(context: Context) {
             PreferencesRepository.getInstance(context).setServiceArmed(true)
             val intent = Intent(context, OverlayService::class.java).apply {
-                action = ACTION_FORCE_SHOW
+                action = ACTION_START
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)

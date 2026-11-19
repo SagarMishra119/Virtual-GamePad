@@ -117,13 +117,21 @@ class JoystickView(
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
-                // On some Samsung / One UI 6 builds, simultaneous synthetic gesture injection
-                // can trigger a transient ACTION_CANCEL. Do not snap back to center immediately;
-                // the stick only releases on a true ACTION_UP or loss of window focus.
+                handleRelease()
                 return true
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    fun cancelAnimations() {
+        returnAnimator?.cancel()
+        returnAnimator = null
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        cancelAnimations()
     }
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
